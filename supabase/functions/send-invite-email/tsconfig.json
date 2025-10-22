@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "checkJs": false,
+    "declaration": false,
+    "allowJs": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["jsr:@supabase/functions-js/edge-runtime"]
+  },
+  "include": ["./**/*.ts"]
+}

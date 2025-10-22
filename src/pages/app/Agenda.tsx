@@ -1,0 +1,791 @@
+// src/pages/app/Agenda.tsx
+import { useMyOrgs } from "@/hooks/useMyOrgs";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  X,
+} from "lucide-react";
+
+type Appt = {
+  id: string;
+  clinic_id: string;
+  doctor_id: string;
+  insurance_id: string;
+  patient_name: string;
+  when_at: string; // ISO UTC no banco
+  attended: boolean | null;
+  status: string;
+};
+type Clinic = { id: string; name: string };
+type Doctor = { id: string; name: string; color?: string | null };
+type Insurance = { id: string; name: string };
+
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function endOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+function fmtDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+function weekdayPt(d: Date) {
+  return d.toLocaleDateString("pt-BR", { weekday: "short" });
+}
+
+// Ajuste de fuso p/ datetime-local
+function toLocalInputValue(iso: string) {
+  const d = new Date(iso);
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off * 60000);
+  return local.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+}
+function fromLocalInputValue(val: string) {
+  // val é local; new Date(val) cria local → toISOString() gera UTC correto
+  return new Date(val).toISOString();
+}
+
+function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative card w-full sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button
+            onClick={onClose}
+            className="rounded-md border px-3 py-1 text-sm"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+export default function AgendaPage() {
+  const { activeOrgId } = useMyOrgs();
+
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const [month, setMonth] = useState(new Date());
+  const [appts, setAppts] = useState<Appt[]>([]);
+  const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [insurances, setInsurances] = useState<Insurance[]>([]);
+
+  // modos de modal: "view" | "edit" | "create"
+  const [mode, setMode] = useState<"view" | "edit" | "create">("view");
+
+  // modal principal (view/edit/create)
+  const [openForm, setOpenForm] = useState(false);
+  const [edit, setEdit] = useState<Appt | null>(null);
+
+  // form (só usado em edit/create)
+  const [patient, setPatient] = useState("");
+  const [clinicId, setClinicId] = useState("");
+  const [doctorId, setDoctorId] = useState("");
+  const [insuranceId, setInsuranceId] = useState("");
+  const [whenAt, setWhenAt] = useState<string>("");
+  const [override, setOverride] = useState(false);
+  const [reason, setReason] = useState("");
+
+  // modal de dia
+  const [openDayModal, setOpenDayModal] = useState(false);
+  const [selectedDayISO, setSelectedDayISO] = useState<string | null>(null);
+
+  // histórico sob demanda (apenas quando o usuário clicar)
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Appt[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const mStart = startOfMonth(month);
+  const mEnd = endOfMonth(month);
+
+  // papel do usuário
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!activeOrgId) {
+          setIsAdmin(false);
+          return;
+        }
+        const { data: u } = await supabase.auth.getUser();
+        const userId = u.user?.id;
+        if (!userId) {
+          setIsAdmin(false);
+          return;
+        }
+        const { data, error } = await supabase
+          .from("org_members")
+          .select("role")
+          .eq("org_id", activeOrgId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) throw error;
+        setIsAdmin(data?.role === "owner" || data?.role === "admin");
+      } catch {
+        setIsAdmin(false);
+      }
+    })();
+  }, [activeOrgId]);
+
+  async function loadStatic() {
+    if (!activeOrgId) return;
+    const [c, d, i] = await Promise.all([
+      supabase
+        .from("clinics")
+        .select("id,name")
+        .eq("org_id", activeOrgId)
+        .order("name"),
+      supabase
+        .from("doctors")
+        .select("id,name,color")
+        .eq("org_id", activeOrgId)
+        .order("name"),
+      supabase
+        .from("insurances")
+        .select("id,name")
+        .eq("org_id", activeOrgId)
+        .order("name"),
+    ]);
+    if (!c.error) setClinics((c.data || []) as Clinic[]);
+    if (!d.error) setDoctors((d.data || []) as Doctor[]);
+    if (!i.error) setInsurances((i.data || []) as Insurance[]);
+  }
+
+  async function loadAppts() {
+    if (!activeOrgId) return;
+    const { data, error } = await supabase
+      .from("appointments")
+      .select(
+        "id, clinic_id, doctor_id, insurance_id, patient_name, when_at, attended, status"
+      )
+      .eq("org_id", activeOrgId)
+      .gte("when_at", fmtDate(mStart))
+      .lt("when_at", fmtDate(new Date(mEnd.getTime() + 86400000)))
+      .order("when_at", { ascending: true });
+    if (!error) setAppts((data || []) as Appt[]);
+  }
+
+  useEffect(() => {
+    loadStatic();
+  }, [activeOrgId]);
+  useEffect(() => {
+    loadAppts();
+  }, [activeOrgId, month]);
+
+  const clinicName = useMemo(() => {
+    const m: Record<string, string> = {};
+    clinics.forEach((c) => {
+      m[c.id] = c.name;
+    });
+    return m;
+  }, [clinics]);
+  const doctorById = useMemo(() => {
+    const m: Record<string, Doctor> = {};
+    doctors.forEach((d) => {
+      m[d.id] = d;
+    });
+    return m;
+  }, [doctors]);
+
+  const byDay = useMemo(() => {
+    const m: Record<string, Appt[]> = {};
+    for (const a of appts) {
+      const k = a.when_at.slice(0, 10);
+      (m[k] ||= []).push(a);
+    }
+    return m;
+  }, [appts]);
+
+  function prevMonth() {
+    const d = new Date(month);
+    d.setMonth(d.getMonth() - 1);
+    setMonth(d);
+  }
+  function nextMonth() {
+    const d = new Date(month);
+    d.setMonth(d.getMonth() + 1);
+    setMonth(d);
+  }
+
+  // create
+  function openNew(dayISO?: string) {
+    setMode("create");
+    setEdit(null);
+    setPatient("");
+    setClinicId(clinics[0]?.id || "");
+    setDoctorId(doctors[0]?.id || "");
+    setInsuranceId(
+      insurances.find((x) => x.name === "Particular")?.id ||
+        insurances[0]?.id ||
+        ""
+    );
+    setWhenAt(
+      dayISO ? `${dayISO}T09:00` : toLocalInputValue(new Date().toISOString())
+    );
+    setOverride(false);
+    setReason("");
+    setShowHistory(false);
+    setOpenForm(true);
+  }
+
+  // view
+  function openView(a: Appt) {
+    setMode("view");
+    setEdit(a);
+    setShowHistory(false);
+    setOpenForm(true);
+  }
+
+  // edit
+  function openEdit(a: Appt) {
+    setMode("edit");
+    setEdit(a);
+    setPatient(a.patient_name);
+    setClinicId(a.clinic_id);
+    setDoctorId(a.doctor_id);
+    setInsuranceId(a.insurance_id);
+    setWhenAt(toLocalInputValue(a.when_at)); // <- sem shift de fuso
+    setOverride(false);
+    setReason("");
+    setShowHistory(false);
+    setOpenForm(true);
+  }
+
+  async function loadHistoryForPatient(name: string) {
+    if (!activeOrgId || !name) {
+      setHistory([]);
+      return;
+    }
+    try {
+      setHistoryLoading(true);
+      const { data, error } = await supabase
+        .from("appointments")
+        .select(
+          "id, clinic_id, doctor_id, insurance_id, patient_name, when_at, attended, status"
+        )
+        .eq("org_id", activeOrgId)
+        .eq("patient_name", name)
+        .order("when_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      setHistory((data || []) as Appt[]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function save() {
+    if (mode === "view") return;
+    if (
+      !activeOrgId ||
+      !patient.trim() ||
+      !clinicId ||
+      !doctorId ||
+      !insuranceId ||
+      !whenAt
+    )
+      return;
+
+    const payload: any = {
+      org_id: activeOrgId,
+      clinic_id: clinicId,
+      doctor_id: doctorId,
+      insurance_id: insuranceId,
+      patient_name: patient.trim(),
+      when_at: fromLocalInputValue(whenAt), // salva correto
+      status: edit?.status || "scheduled",
+      attended: edit?.attended ?? null,
+    };
+    if (edit?.id) payload.id = edit.id;
+    if (override && isAdmin)
+      payload.override_reason = reason || "override admin";
+
+    const { error } = await supabase
+      .from("appointments")
+      .upsert(payload, { onConflict: "id" });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setOpenForm(false);
+    loadAppts();
+  }
+
+  async function setAttendance(a: Appt, attended: boolean) {
+    if (!activeOrgId) return;
+    const { error } = await supabase
+      .from("appointments")
+      .update({ attended })
+      .eq("org_id", activeOrgId)
+      .eq("id", a.id);
+    if (!error) loadAppts();
+  }
+
+  // grid de dias
+  const days: Date[] = [];
+  const f = startOfMonth(month);
+  const l = endOfMonth(month);
+  const offset = (f.getDay() + 6) % 7;
+  for (let i = 0; i < offset; i++)
+    days.push(new Date(f.getTime() - (offset - i) * 86400000));
+  for (let d = 1; d <= l.getDate(); d++)
+    days.push(new Date(f.getFullYear(), f.getMonth(), d));
+  while (days.length % 7 !== 0)
+    days.push(new Date(days[days.length - 1].getTime() + 86400000));
+
+  function openDay(iso: string) {
+    setSelectedDayISO(iso);
+    setOpenDayModal(true);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* barra do mês */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex items-center gap-2">
+          <button className="rounded-md border p-2" onClick={prevMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="font-semibold text-center">
+          {month.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
+        </div>
+        <div className="inline-flex items-center gap-2 justify-end">
+          <button className="rounded-md border p-2" onClick={nextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => openNew()}
+            className="rounded-md border px-3 py-2 text-sm"
+          >
+            Novo agendamento
+          </button>
+        </div>
+      </div>
+
+      {/* header dias (desktop) */}
+      <div className="hidden md:grid md:grid-cols-7 md:gap-2">
+        {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((w) => (
+          <div key={w} className="text-xs text-mutedForeground">
+            {w}
+          </div>
+        ))}
+      </div>
+
+      {/* grid dias */}
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+        {days.map((d, idx) => {
+          const iso = fmtDate(d);
+          const items = byDay[iso] || [];
+          const inMonth = d.getMonth() === month.getMonth();
+          const title = `${d.getDate()} • ${weekdayPt(d)}`;
+
+          return (
+            <div
+              key={idx}
+              className={`card p-2 min-h-[120px] ${
+                inMonth ? "" : "opacity-50"
+              }`}
+              onClick={() => inMonth && openDay(iso)}
+              role="button"
+            >
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-medium md:font-semibold">
+                  <span className="md:hidden">{title}</span>
+                  <span className="hidden md:inline">{d.getDate()}</span>
+                </span>
+                {inMonth && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openNew(iso);
+                    }}
+                    className="rounded-md border px-2 py-[2px] text-[11px]"
+                  >
+                    + agendar
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                {items.map((a) => {
+                  const doc = doctorById[a.doctor_id];
+                  const color = doc?.color || "#0ea5e9";
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openView(a);
+                      }}
+                      className="w-full text-left rounded-md px-2 py-1 border"
+                      style={{ borderColor: color }}
+                      title={`${a.patient_name} • ${doc?.name || "Médico"}`}
+                    >
+                      <div className="text-xs font-medium">
+                        {a.patient_name}
+                      </div>
+                      <div className="text-[11px] text-mutedForeground">
+                        {new Date(a.when_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {" • "}
+                        {doc?.name || "Médico"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal: lista do dia */}
+      <Modal
+        open={openDayModal}
+        onClose={() => setOpenDayModal(false)}
+        title={
+          selectedDayISO
+            ? `Agendamentos de ${new Date(selectedDayISO).toLocaleDateString(
+                "pt-BR"
+              )}`
+            : "Agendamentos do dia"
+        }
+      >
+        {selectedDayISO && (
+          <div className="space-y-2">
+            {(byDay[selectedDayISO] || [])
+              .slice()
+              .sort(
+                (a, b) =>
+                  new Date(a.when_at).getTime() - new Date(b.when_at).getTime()
+              )
+              .map((a) => {
+                const doc = doctorById[a.doctor_id];
+                return (
+                  <div
+                    key={a.id}
+                    className="flex flex-wrap items-center justify-between gap-2 border rounded-md px-3 py-2"
+                  >
+                    <div className="text-sm">
+                      <div className="font-medium">{a.patient_name}</div>
+                      <div className="text-xs text-mutedForeground">
+                        {new Date(a.when_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {" • "}
+                        {doc?.name || "Médico"}
+                        {" • "}
+                        {clinicName[a.clinic_id] || "Clínica"}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded-md border px-3 py-1 text-sm"
+                        onClick={() => {
+                          setOpenDayModal(false);
+                          openView(a);
+                        }}
+                      >
+                        Abrir
+                      </button>
+                      <button
+                        className="rounded-md border px-3 py-1 text-sm"
+                        onClick={() => {
+                          setOpenDayModal(false);
+                          openEdit(a);
+                        }}
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            {(byDay[selectedDayISO] || []).length === 0 && (
+              <div className="text-sm text-mutedForeground">
+                Sem agendamentos neste dia.
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal principal: VIEW / EDIT / CREATE */}
+      <Modal
+        open={openForm}
+        onClose={() => setOpenForm(false)}
+        title={
+          mode === "view"
+            ? "Ver agendamento"
+            : mode === "edit"
+            ? "Editar agendamento"
+            : "Novo agendamento"
+        }
+      >
+        {mode === "view" && edit && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="label">Paciente</div>
+                <div className="font-medium">{edit.patient_name}</div>
+              </div>
+              <div>
+                <div className="label">Data/Hora</div>
+                <div className="font-medium">
+                  {new Date(edit.when_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+              </div>
+              <div>
+                <div className="label">Clínica</div>
+                <div className="font-medium">
+                  {clinicName[edit.clinic_id] || "—"}
+                </div>
+              </div>
+              <div>
+                <div className="label">Médico</div>
+                <div className="font-medium">
+                  {doctorById[edit.doctor_id]?.name || "—"}
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <div className="label">Convênio</div>
+                <div className="font-medium">
+                  {insurances.find((i) => i.id === edit.insurance_id)?.name ||
+                    "—"}
+                </div>
+              </div>
+            </div>
+
+            {/* presença */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setAttendance(edit, true)}
+                className="rounded-md border px-3 py-2 text-sm inline-flex items-center gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Compareceu
+              </button>
+              <button
+                onClick={() => setAttendance(edit, false)}
+                className="rounded-md border px-3 py-2 text-sm inline-flex items-center gap-2"
+              >
+                <XCircle className="h-4 w-4" /> Não compareceu
+              </button>
+
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={() => {
+                    if (edit) openEdit(edit);
+                  }}
+                  className="rounded-md border px-3 py-2 text-sm"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowHistory((h) => !h);
+                    if (!showHistory)
+                      await loadHistoryForPatient(edit.patient_name);
+                  }}
+                  className="rounded-md border px-3 py-2 text-sm"
+                >
+                  {showHistory ? "Ocultar histórico" : "Ver histórico"}
+                </button>
+              </div>
+            </div>
+
+            {/* histórico (só presença; sem “status scheduled”) */}
+            {showHistory && (
+              <div className="mt-3">
+                {historyLoading && (
+                  <div className="text-sm text-mutedForeground">
+                    Carregando…
+                  </div>
+                )}
+                {!historyLoading && history.length === 0 && (
+                  <div className="text-sm text-mutedForeground">
+                    Nenhum histórico encontrado.
+                  </div>
+                )}
+                {!historyLoading && history.length > 0 && (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {history.map((h) => {
+                      const doc = doctorById[h.doctor_id];
+                      const clin = clinicName[h.clinic_id] || "Clínica";
+                      return (
+                        <div
+                          key={h.id}
+                          className="border rounded-md px-3 py-2 text-sm"
+                        >
+                          <div className="font-medium">
+                            {new Date(h.when_at).toLocaleString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                          <div className="text-xs text-mutedForeground">
+                            {doc?.name || "Médico"} • {clin}
+                          </div>
+                          <div className="text-xs mt-1">
+                            {h.attended === true && (
+                              <span className="text-green-600">compareceu</span>
+                            )}
+                            {h.attended === false && (
+                              <span className="text-red-600">
+                                não compareceu
+                              </span>
+                            )}
+                            {h.attended === null && (
+                              <span className="text-mutedForeground">—</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(mode === "edit" || mode === "create") && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Paciente *</label>
+                <input
+                  className="input w-full"
+                  value={patient}
+                  onChange={(e) => setPatient(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">Data/Hora *</label>
+                <input
+                  type="datetime-local"
+                  className="input w-full"
+                  value={whenAt}
+                  onChange={(e) => setWhenAt(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">Clínica *</label>
+                <select
+                  className="input w-full"
+                  value={clinicId}
+                  onChange={(e) => setClinicId(e.target.value)}
+                >
+                  {clinics.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Médico *</label>
+                <select
+                  className="input w-full"
+                  value={doctorId}
+                  onChange={(e) => setDoctorId(e.target.value)}
+                >
+                  {doctors.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Convênio *</label>
+                <select
+                  className="input w-full"
+                  value={insuranceId}
+                  onChange={(e) => setInsuranceId(e.target.value)}
+                >
+                  {insurances.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                      {i.name === "Particular" ? " (padrão)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {isAdmin && (
+                <div className="sm:col-span-2">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={override}
+                      onChange={(e) => setOverride(e.target.checked)}
+                    />
+                    <span>
+                      Permitir fora das regras min/máx do convênio (admin)
+                    </span>
+                  </label>
+                  {override && (
+                    <input
+                      className="input w-full mt-2"
+                      placeholder="Motivo do agendamento fora do escopo"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setOpenForm(false)}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={save}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                Salvar
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+    </div>
+  );
+}

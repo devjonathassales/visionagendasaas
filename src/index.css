@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   Design tokens
+========================= */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+
+  --primary: 100 63% 67%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 0 0% 75%;
+  --secondary-foreground: 0 0% 10%;
+
+  --accent: 221 83% 53%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --success: 142 71% 45%;
+  --warning: 38 92% 50%;
+  --info: 221 83% 53%;
+}
+
+.dark {
+  --background: 224 71% 4%;
+  --foreground: 213 31% 91%;
+  --card: 222.2 47.4% 11.2%;
+  --card-foreground: 213 31% 91%;
+  --muted: 223 47% 11%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --border: 216 34% 17%;
+  --input: 216 34% 17%;
+  --ring: 217.2 91.2% 59.8%;
+
+  --primary: 100 63% 62%;
+  --primary-foreground: 0 0% 0%;
+  --secondary: 0 0% 65%;
+  --secondary-foreground: 0 0% 10%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 63% 45%;
+  --destructive-foreground: 0 0% 98%;
+}
+
+html, body, #root { height: 100%; }
+
+/* =========================
+   Base
+========================= */
+@layer base {
+  body { @apply bg-background text-foreground; }
+  h1 { @apply text-3xl font-semibold tracking-tight; }
+  h2 { @apply text-2xl font-semibold tracking-tight; }
+  h3 { @apply text-xl font-semibold; }
+  p  { @apply leading-7; }
+  small { @apply text-sm text-mutedForeground; }
+}
+
+/* =========================
+   Components
+========================= */
+@layer components {
+  .btn { @apply inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition bg-card text-foreground border-border hover:bg-muted; }
+  .btn-primary { @apply bg-primary text-primary-foreground border-transparent hover:opacity-90; }
+  .btn-secondary { @apply bg-secondary text-secondary-foreground border-transparent hover:opacity-90; }
+  .btn-accent { @apply bg-accent text-accent-foreground border-transparent hover:opacity-90; }
+  .card { @apply rounded-lg border border-border bg-card shadow-sm; }
+  .input { @apply w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring; }
+  .label { @apply block text-sm mb-1 text-mutedForeground; }
+  .badge { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-muted text-foreground; }
+}
+
+/* =========================
+   Layout helpers
+========================= */
+
+/* Grid do ADMIN (sidebar + conteúdo). 
+   ⚠️ NÃO usar no ClientShell. */
+.app-grid { @apply grid grid-cols-1 lg:grid-cols-[260px_1fr] min-h-screen; }
+.sidebar { @apply hidden lg:block border-r border-border bg-card; }
+
+/* Header e content genéricos */
+.header { @apply border-b border-border bg-card; }
+.content { @apply p-4 lg:p-8; }
+
+/* (Opcional) Se em algum lugar houver max-width estreito acidental,
+   garanta que content possa expandir — o ClientShell já usa containers amplos. */
+/*
+.content { max-width: none; width: 100%; }
+*/
