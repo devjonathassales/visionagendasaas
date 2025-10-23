@@ -11,6 +11,7 @@ import {
   Building2,
   Stethoscope,
   ShieldPlus,
+  Users, // 👈 novo ícone para Pacientes
 } from "lucide-react";
 import { useMyOrgs } from "@/hooks/useMyOrgs";
 
@@ -43,6 +44,7 @@ export default function ClientShell() {
     setActiveOrgId,
     loading: loadingOrgs,
   } = useMyOrgs();
+
   const activeOrg = useMemo(
     () => orgs.find((o) => o.id === activeOrgId) || null,
     [orgs, activeOrgId]
@@ -51,9 +53,9 @@ export default function ClientShell() {
   useEffect(() => setName(getDisplayName(session)), [session]);
 
   return (
-    // <<< sem "app-grid" aqui para não herdar o layout estreito do admin
+    // sem "app-grid" para não herdar layout do admin
     <div className="min-h-screen flex flex-col">
-      {/* HEADER full width com container amplo */}
+      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-[var(--bg)]/80 backdrop-blur">
         <div className="mx-auto w-full max-w-screen-2xl px-4 md:px-6 flex h-14 items-center justify-between">
           <div className="flex items-center gap-2">
@@ -79,6 +81,11 @@ export default function ClientShell() {
               <NavLink to="/app/clinics" className={linkCls}>
                 <Building2 className="h-4 w-4 mr-1" />
                 Minhas clínicas
+              </NavLink>
+              {/* 👇 novo: Pacientes */}
+              <NavLink to="/app/patients" className={linkCls}>
+                <Users className="h-4 w-4 mr-1" />
+                Pacientes
               </NavLink>
               <NavLink to="/app/doctors" className={linkCls}>
                 <Stethoscope className="h-4 w-4 mr-1" />
@@ -141,12 +148,12 @@ export default function ClientShell() {
         </div>
       </header>
 
-      {/* CONTEÚDO com o mesmo container do header */}
+      {/* CONTEÚDO */}
       <main className="mx-auto w-full max-w-screen-2xl px-4 md:px-6 py-6">
         <Outlet />
       </main>
 
-      {/* FOOTER full width com container amplo */}
+      {/* FOOTER */}
       <footer className="mt-auto border-t border-border bg-card">
         <div className="mx-auto w-full max-w-screen-2xl px-4 md:px-6 py-4 text-sm text-mutedForeground">
           © {new Date().getFullYear()} VisionWare — VISIONAGENDA SaaS
@@ -221,6 +228,14 @@ export default function ClientShell() {
                 className={linkCls}
               >
                 <Building2 className="h-4 w-4 mr-1" /> Minhas clínicas
+              </NavLink>
+              {/* 👇 novo: Pacientes (mobile) */}
+              <NavLink
+                to="/app/patients"
+                onClick={() => setOpen(false)}
+                className={linkCls}
+              >
+                <Users className="h-4 w-4 mr-1" /> Pacientes
               </NavLink>
               <NavLink
                 to="/app/doctors"

@@ -16,8 +16,9 @@
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    "types": ["vite/client"]
   },
-  "include": ["src", "supabase"],
+  "include": ["src", "supabase", "src/env.d.ts"],
   "exclude": ["node_modules", "supabase/functions"]
 }

@@ -1,5 +1,5 @@
 // src/pages/app/Doctors.tsx
-import { useActiveOrg } from "@/hooks/useMyOrgs";
+import { useMyOrgs } from "@/hooks/useMyOrgs";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, X, Trash2, Pencil, Eye } from "lucide-react";
@@ -34,7 +34,7 @@ function Modal({ open, onClose, title, children }: any) {
 }
 
 export default function DoctorsPage() {
-  const { activeOrgId } = useActiveOrg();
+  const { activeOrgId } = useMyOrgs();
   const [rows, setRows] = useState<Doctor[]>([]);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<Doctor | null>(null);

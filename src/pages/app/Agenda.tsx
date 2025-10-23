@@ -1,4 +1,3 @@
-// src/pages/app/Agenda.tsx
 import { useMyOrgs } from "@/hooks/useMyOrgs";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -8,6 +7,9 @@ import {
   CheckCircle2,
   XCircle,
   X,
+  Trash2,
+  CalendarDays,
+  Plus,
 } from "lucide-react";
 
 type Appt = {
@@ -16,13 +18,15 @@ type Appt = {
   doctor_id: string;
   insurance_id: string;
   patient_name: string;
-  when_at: string; // ISO UTC no banco
+  when_at: string; // ISO (UTC) no banco
   attended: boolean | null;
   status: string;
 };
 type Clinic = { id: string; name: string };
 type Doctor = { id: string; name: string; color?: string | null };
 type Insurance = { id: string; name: string };
+type Patient = { id: string; name: string };
+type Holiday = { id: string; date: string; name: string };
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -37,15 +41,14 @@ function weekdayPt(d: Date) {
   return d.toLocaleDateString("pt-BR", { weekday: "short" });
 }
 
-// Ajuste de fuso p/ datetime-local
+// datetime-local helpers (sem “pular” horário)
 function toLocalInputValue(iso: string) {
   const d = new Date(iso);
   const off = d.getTimezoneOffset();
   const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+  return local.toISOString().slice(0, 16);
 }
 function fromLocalInputValue(val: string) {
-  // val é local; new Date(val) cria local → toISOString() gera UTC correto
   return new Date(val).toISOString();
 }
 
@@ -90,15 +93,15 @@ export default function AgendaPage() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [insurances, setInsurances] = useState<Insurance[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
 
-  // modos de modal: "view" | "edit" | "create"
+  // "view" | "edit" | "create"
   const [mode, setMode] = useState<"view" | "edit" | "create">("view");
-
-  // modal principal (view/edit/create)
   const [openForm, setOpenForm] = useState(false);
   const [edit, setEdit] = useState<Appt | null>(null);
 
-  // form (só usado em edit/create)
+  // form (edit/create)
   const [patient, setPatient] = useState("");
   const [clinicId, setClinicId] = useState("");
   const [doctorId, setDoctorId] = useState("");
@@ -107,14 +110,19 @@ export default function AgendaPage() {
   const [override, setOverride] = useState(false);
   const [reason, setReason] = useState("");
 
-  // modal de dia
+  // modal dia
   const [openDayModal, setOpenDayModal] = useState(false);
   const [selectedDayISO, setSelectedDayISO] = useState<string | null>(null);
 
-  // histórico sob demanda (apenas quando o usuário clicar)
+  // histórico sob demanda
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<Appt[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // modal feriados
+  const [openHolidays, setOpenHolidays] = useState(false);
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+  const [newHolidayName, setNewHolidayName] = useState("");
 
   const mStart = startOfMonth(month);
   const mEnd = endOfMonth(month);
@@ -123,16 +131,11 @@ export default function AgendaPage() {
   useEffect(() => {
     (async () => {
       try {
-        if (!activeOrgId) {
-          setIsAdmin(false);
-          return;
-        }
+        if (!activeOrgId) return setIsAdmin(false);
         const { data: u } = await supabase.auth.getUser();
         const userId = u.user?.id;
-        if (!userId) {
-          setIsAdmin(false);
-          return;
-        }
+        if (!userId) return setIsAdmin(false);
+
         const { data, error } = await supabase
           .from("org_members")
           .select("role")
@@ -147,9 +150,10 @@ export default function AgendaPage() {
     })();
   }, [activeOrgId]);
 
+  // carrega estáticos (inclui pacientes da org)
   async function loadStatic() {
     if (!activeOrgId) return;
-    const [c, d, i] = await Promise.all([
+    const [c, d, i, p] = await Promise.all([
       supabase
         .from("clinics")
         .select("id,name")
@@ -165,10 +169,61 @@ export default function AgendaPage() {
         .select("id,name")
         .eq("org_id", activeOrgId)
         .order("name"),
+      supabase
+        .from("patients")
+        .select("id,name")
+        .eq("org_id", activeOrgId)
+        .order("name"),
     ]);
     if (!c.error) setClinics((c.data || []) as Clinic[]);
     if (!d.error) setDoctors((d.data || []) as Doctor[]);
     if (!i.error) setInsurances((i.data || []) as Insurance[]);
+    if (!p.error) setPatients((p.data || []) as Patient[]);
+  }
+
+  // feriados do mês atual
+  async function loadHolidays() {
+    if (!activeOrgId) return;
+    const { data, error } = await supabase
+      .from("holidays")
+      .select("id,date,name")
+      .eq("org_id", activeOrgId)
+      .gte("date", fmtDate(mStart))
+      .lte("date", fmtDate(mEnd))
+      .order("date");
+    if (!error) setHolidays((data || []) as Holiday[]);
+  }
+
+  async function addHoliday() {
+    if (!activeOrgId || !newHolidayDate || !newHolidayName.trim()) return;
+    const { error } = await supabase.from("holidays").insert({
+      org_id: activeOrgId,
+      date: newHolidayDate,
+      name: newHolidayName.trim(),
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setNewHolidayDate("");
+    setNewHolidayName("");
+    await loadHolidays();
+  }
+
+  async function deleteHoliday(h: Holiday) {
+    if (!activeOrgId) return;
+    const ok = confirm(`Remover feriado "${h.name}" de ${h.date}?`);
+    if (!ok) return;
+    const { error } = await supabase
+      .from("holidays")
+      .delete()
+      .eq("org_id", activeOrgId)
+      .eq("id", h.id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    await loadHolidays();
   }
 
   async function loadAppts() {
@@ -188,24 +243,35 @@ export default function AgendaPage() {
   useEffect(() => {
     loadStatic();
   }, [activeOrgId]);
+
   useEffect(() => {
     loadAppts();
+    loadHolidays();
   }, [activeOrgId, month]);
 
   const clinicName = useMemo(() => {
     const m: Record<string, string> = {};
-    clinics.forEach((c) => {
-      m[c.id] = c.name;
-    });
+    clinics.forEach((c) => (m[c.id] = c.name));
     return m;
   }, [clinics]);
+
   const doctorById = useMemo(() => {
     const m: Record<string, Doctor> = {};
-    doctors.forEach((d) => {
-      m[d.id] = d;
-    });
+    doctors.forEach((d) => (m[d.id] = d));
     return m;
   }, [doctors]);
+
+  // set de feriados para lookup O(1)
+  const holidaySet = useMemo(() => {
+    const s = new Set<string>();
+    holidays.forEach((h) => s.add(h.date));
+    return s;
+  }, [holidays]);
+  const holidayNameByDate = useMemo(() => {
+    const m: Record<string, string> = {};
+    holidays.forEach((h) => (m[h.date] = h.name));
+    return m;
+  }, [holidays]);
 
   const byDay = useMemo(() => {
     const m: Record<string, Appt[]> = {};
@@ -229,6 +295,15 @@ export default function AgendaPage() {
 
   // create
   function openNew(dayISO?: string) {
+    // bloqueio imediato se o dia clicado for feriado
+    if (dayISO && holidaySet.has(dayISO)) {
+      alert(
+        `${
+          holidayNameByDate[dayISO] || "Feriado"
+        } — agendamentos bloqueados para este dia.`
+      );
+      return;
+    }
     setMode("create");
     setEdit(null);
     setPatient("");
@@ -264,7 +339,7 @@ export default function AgendaPage() {
     setClinicId(a.clinic_id);
     setDoctorId(a.doctor_id);
     setInsuranceId(a.insurance_id);
-    setWhenAt(toLocalInputValue(a.when_at)); // <- sem shift de fuso
+    setWhenAt(toLocalInputValue(a.when_at));
     setOverride(false);
     setReason("");
     setShowHistory(false);
@@ -272,10 +347,7 @@ export default function AgendaPage() {
   }
 
   async function loadHistoryForPatient(name: string) {
-    if (!activeOrgId || !name) {
-      setHistory([]);
-      return;
-    }
+    if (!activeOrgId || !name) return setHistory([]);
     try {
       setHistoryLoading(true);
       const { data, error } = await supabase
@@ -306,13 +378,25 @@ export default function AgendaPage() {
     )
       return;
 
+    const whenIso = fromLocalInputValue(whenAt);
+    const dIso = whenIso.slice(0, 10);
+
+    // BLOQUEIO DURO: se é feriado, só permite se override (admin) estiver marcado
+    if (holidaySet.has(dIso) && !override) {
+      alert(
+        `${holidayNameByDate[dIso] || "Feriado"} — agendamentos bloqueados. ` +
+          `Se necessário, marque a opção de override (admin) e informe o motivo.`
+      );
+      return;
+    }
+
     const payload: any = {
       org_id: activeOrgId,
       clinic_id: clinicId,
       doctor_id: doctorId,
       insurance_id: insuranceId,
       patient_name: patient.trim(),
-      when_at: fromLocalInputValue(whenAt), // salva correto
+      when_at: whenIso,
       status: edit?.status || "scheduled",
       attended: edit?.attended ?? null,
     };
@@ -339,6 +423,34 @@ export default function AgendaPage() {
       .eq("org_id", activeOrgId)
       .eq("id", a.id);
     if (!error) loadAppts();
+  }
+
+  async function deleteAppt(a: Appt) {
+    if (!activeOrgId) return;
+    const ok = confirm(
+      `Excluir agendamento de "${a.patient_name}" em ${new Date(
+        a.when_at
+      ).toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}?`
+    );
+    if (!ok) return;
+    const { error } = await supabase
+      .from("appointments")
+      .delete()
+      .eq("org_id", activeOrgId)
+      .eq("id", a.id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setOpenForm(false);
+    setOpenDayModal(false);
+    await loadAppts();
   }
 
   // grid de dias
@@ -371,6 +483,14 @@ export default function AgendaPage() {
           {month.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
         </div>
         <div className="inline-flex items-center gap-2 justify-end">
+          {/* Botão feriados */}
+          <button
+            onClick={() => setOpenHolidays(true)}
+            className="rounded-md border px-3 py-2 text-sm inline-flex items-center gap-2"
+            title="Gerenciar feriados"
+          >
+            <CalendarDays className="h-4 w-4" /> Feriados
+          </button>
           <button className="rounded-md border p-2" onClick={nextMonth}>
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -399,30 +519,51 @@ export default function AgendaPage() {
           const items = byDay[iso] || [];
           const inMonth = d.getMonth() === month.getMonth();
           const title = `${d.getDate()} • ${weekdayPt(d)}`;
+          const isHoliday = holidaySet.has(iso);
+          const holidayLabel = isHoliday
+            ? holidayNameByDate[iso] || "Feriado"
+            : "";
 
           return (
             <div
               key={idx}
               className={`card p-2 min-h-[120px] ${
                 inMonth ? "" : "opacity-50"
-              }`}
+              } ${isHoliday ? "ring-1 ring-red-400/70" : ""}`}
               onClick={() => inMonth && openDay(iso)}
               role="button"
+              title={isHoliday ? holidayLabel : undefined}
             >
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="font-medium md:font-semibold">
                   <span className="md:hidden">{title}</span>
                   <span className="hidden md:inline">{d.getDate()}</span>
+                  {isHoliday && (
+                    <span className="ml-2 rounded px-1 py-[1px] text-[10px] border border-red-300">
+                      {holidayLabel}
+                    </span>
+                  )}
                 </span>
                 {inMonth && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (isHoliday) {
+                        alert(
+                          `${holidayLabel} — agendamentos bloqueados para este dia.`
+                        );
+                        return;
+                      }
                       openNew(iso);
                     }}
-                    className="rounded-md border px-2 py-[2px] text-[11px]"
+                    className={`rounded-md border px-2 py-[2px] text-[11px] inline-flex items-center gap-1 ${
+                      isHoliday ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                    title={
+                      isHoliday ? "Bloqueado por feriado" : "Novo agendamento"
+                    }
                   >
-                    + agendar
+                    <Plus className="h-3 w-3" /> agendar
                   </button>
                 )}
               </div>
@@ -521,10 +662,19 @@ export default function AgendaPage() {
                       >
                         Editar
                       </button>
+                      <button
+                        className="rounded-md border px-3 py-1 text-sm"
+                        onClick={() => deleteAppt(a)}
+                        title="Excluir agendamento"
+                      >
+                        <Trash2 className="inline h-4 w-4 mr-1" />
+                        Excluir
+                      </button>
                     </div>
                   </div>
                 );
               })}
+
             {(byDay[selectedDayISO] || []).length === 0 && (
               <div className="text-sm text-mutedForeground">
                 Sem agendamentos neste dia.
@@ -586,8 +736,7 @@ export default function AgendaPage() {
               </div>
             </div>
 
-            {/* presença */}
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <button
                 onClick={() => setAttendance(edit, true)}
                 className="rounded-md border px-3 py-2 text-sm inline-flex items-center gap-2"
@@ -603,9 +752,7 @@ export default function AgendaPage() {
 
               <div className="ml-auto flex gap-2">
                 <button
-                  onClick={() => {
-                    if (edit) openEdit(edit);
-                  }}
+                  onClick={() => edit && openEdit(edit)}
                   className="rounded-md border px-3 py-2 text-sm"
                 >
                   Editar
@@ -620,10 +767,17 @@ export default function AgendaPage() {
                 >
                   {showHistory ? "Ocultar histórico" : "Ver histórico"}
                 </button>
+                <button
+                  onClick={() => deleteAppt(edit)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                  title="Excluir agendamento"
+                >
+                  <Trash2 className="inline h-4 w-4 mr-1" />
+                  Excluir
+                </button>
               </div>
             </div>
 
-            {/* histórico (só presença; sem “status scheduled”) */}
             {showHistory && (
               <div className="mt-3">
                 {historyLoading && (
@@ -686,12 +840,30 @@ export default function AgendaPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Paciente *</label>
-                <input
-                  className="input w-full"
-                  value={patient}
-                  onChange={(e) => setPatient(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <input
+                    className="input w-full"
+                    list="patientsList"
+                    value={patient}
+                    onChange={(e) => setPatient(e.target.value)}
+                    placeholder="Digite ou selecione…"
+                  />
+                  <button
+                    type="button"
+                    className="rounded-md border px-3 py-2 text-sm"
+                    onClick={() => patient && loadHistoryForPatient(patient)}
+                    title="Ver histórico desse paciente"
+                  >
+                    Histórico
+                  </button>
+                </div>
+                <datalist id="patientsList">
+                  {patients.map((p) => (
+                    <option key={p.id} value={p.name} />
+                  ))}
+                </datalist>
               </div>
+
               <div>
                 <label className="label">Data/Hora *</label>
                 <input
@@ -700,7 +872,14 @@ export default function AgendaPage() {
                   value={whenAt}
                   onChange={(e) => setWhenAt(e.target.value)}
                 />
+                {whenAt && holidaySet.has(whenAt.slice(0, 10)) && (
+                  <div className="mt-1 text-xs text-red-600">
+                    {holidayNameByDate[whenAt.slice(0, 10)] || "Feriado"} —
+                    agendamentos bloqueados. (Use override admin se necessário.)
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="label">Clínica *</label>
                 <select
@@ -754,13 +933,13 @@ export default function AgendaPage() {
                       onChange={(e) => setOverride(e.target.checked)}
                     />
                     <span>
-                      Permitir fora das regras min/máx do convênio (admin)
+                      Override (admin): permitir fora de regras/feriado
                     </span>
                   </label>
                   {override && (
                     <input
                       className="input w-full mt-2"
-                      placeholder="Motivo do agendamento fora do escopo"
+                      placeholder="Motivo do override"
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                     />
@@ -785,6 +964,91 @@ export default function AgendaPage() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* Modal FERIADOS */}
+      <Modal
+        open={openHolidays}
+        onClose={() => setOpenHolidays(false)}
+        title="Feriados do mês"
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-mutedForeground">
+            Gerencie os feriados deste mês (
+            {month.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
+            ). Dias marcados aqui ficam bloqueados para novos agendamentos.
+          </div>
+
+          {isAdmin ? (
+            <form
+              className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end"
+              onSubmit={(e) => {
+                e.preventDefault();
+                addHoliday();
+              }}
+            >
+              <div>
+                <label className="label">Data *</label>
+                <input
+                  type="date"
+                  className="input w-full"
+                  value={newHolidayDate}
+                  min={fmtDate(mStart)}
+                  max={fmtDate(mEnd)}
+                  onChange={(e) => setNewHolidayDate(e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Nome *</label>
+                <input
+                  className="input w-full"
+                  value={newHolidayName}
+                  onChange={(e) => setNewHolidayName(e.target.value)}
+                  placeholder="Ex.: Proclamação da República"
+                />
+              </div>
+              <div className="sm:col-span-3 flex justify-end">
+                <button className="rounded-md border px-3 py-2 text-sm">
+                  Adicionar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="text-sm text-mutedForeground">
+              Somente administradores podem editar.
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {holidays.length === 0 && (
+              <div className="text-sm text-mutedForeground">
+                Nenhum feriado neste mês.
+              </div>
+            )}
+            {holidays.map((h) => (
+              <div
+                key={h.id}
+                className="border rounded-md px-3 py-2 text-sm flex items-center justify-between"
+              >
+                <div>
+                  <div className="font-medium">
+                    {new Date(h.date + "T00:00:00").toLocaleDateString("pt-BR")}
+                  </div>
+                  <div className="text-xs text-mutedForeground">{h.name}</div>
+                </div>
+                {isAdmin && (
+                  <button
+                    onClick={() => deleteHoliday(h)}
+                    className="rounded-md border px-3 py-1 text-sm"
+                    title="Remover feriado"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </Modal>
     </div>
   );

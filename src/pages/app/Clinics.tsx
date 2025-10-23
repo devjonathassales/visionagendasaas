@@ -110,7 +110,6 @@ export default function ClinicsPage() {
     activeOrgId,
     setActiveOrgId,
     loading: loadingOrgs,
-    err: orgErr,
   } = useMyOrgs();
 
   const [rows, setRows] = useState<Clinic[]>([]);
@@ -284,9 +283,9 @@ export default function ClinicsPage() {
         </div>
       </div>
 
-      {(orgErr || err) && (
+      {err && (
         <div className="card p-3 text-sm text-red-600 border border-red-500/40 bg-red-500/5">
-          {orgErr || err}
+          {err}
         </div>
       )}
 

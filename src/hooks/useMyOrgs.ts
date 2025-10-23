@@ -1,62 +1,142 @@
 // src/hooks/useMyOrgs.ts
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type MyOrg = { id: string; name: string };
+/** Org no app (created_at opcional p/ simplificar) */
+export type Org = {
+  id: string;
+  name: string;
+  created_at?: string | null;
+};
+
+// Linha que vem do join no Supabase. 'org' pode vir como objeto OU array.
+type Row = {
+  org: Org | Org[] | null;
+};
+
+const LS_KEY = "va_active_org_id";
 
 export function useMyOrgs() {
-  const [orgs, setOrgs] = useState<MyOrg[]>([]);
-  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(() => {
+    // tenta restaurar do localStorage
+    try {
+      const v = localStorage.getItem(LS_KEY);
+      return v || null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  async function fetchOrgs() {
+    setLoading(true);
+    try {
+      // 1) user
+      const { data: u } = await supabase.auth.getUser();
+      const userId = u.user?.id;
+      if (!userId) {
+        setOrgs([]);
+        setActiveOrgId(null);
+        return;
+      }
 
-    async function load() {
-      setLoading(true);
-      setErr(null);
-      try {
-        const { data: auth } = await supabase.auth.getUser();
-        if (!auth.user) {
-          if (isMounted) {
-            setOrgs([]);
-            setActiveOrgId(null);
-          }
-          return;
-        }
+      // 2) orgs onde é membro
+      const fb = await supabase
+        .from("org_members")
+        // relacionamento "organizations" exposto como "org"
+        .select("org:organizations (id, name, created_at)")
+        .eq("user_id", userId);
 
-        // Busca as orgs onde o usuário é membro
-        const { data, error } = await supabase
+      let list: Org[] = [];
+
+      if (!fb.error && fb.data) {
+        const rows = fb.data as Row[];
+        list = rows
+          .flatMap((r) =>
+            r.org ? (Array.isArray(r.org) ? r.org : [r.org]) : []
+          )
+          .filter((o): o is Org => Boolean(o?.id && o?.name))
+          // dedup por id (evita duplicado em joins)
+          .reduce<Org[]>((acc, o) => {
+            if (!acc.some((x) => x.id === o.id))
+              acc.push({ ...o, created_at: o.created_at ?? null });
+            return acc;
+          }, []);
+      }
+
+      // 3) fallback: se nada veio (ex.: staff com política mais ampla)
+      if (list.length === 0) {
+        const all = await supabase
           .from("organizations")
-          .select("id,name")
+          .select("id, name, created_at")
           .order("created_at", { ascending: true });
 
-        if (error) throw error;
-        const list = (data || []) as MyOrg[];
-        if (!isMounted) return;
-
-        setOrgs(list);
-        setActiveOrgId((prev) => prev ?? list[0]?.id ?? null);
-      } catch (e: any) {
-        if (isMounted)
-          setErr(e?.message || "Não foi possível carregar suas organizações.");
-      } finally {
-        if (isMounted) setLoading(false);
+        if (!all.error && all.data) {
+          list = (all.data as any[]).map((o) => ({
+            id: o.id as string,
+            name: o.name as string,
+            created_at: (o.created_at as string) ?? null,
+          }));
+        }
       }
-    }
 
-    load();
-    return () => {
-      isMounted = false;
-    };
+      // 4) ordena por created_at (nulo por último) e atualiza estado
+      list.sort((a, b) => {
+        const aa = a.created_at ?? "9999-12-31";
+        const bb = b.created_at ?? "9999-12-31";
+        return aa.localeCompare(bb);
+      });
+
+      setOrgs(list);
+
+      // ativa a org:
+      // - se já há uma salva no localStorage e ela ainda existe, mantém
+      // - senão, ativa a primeira da lista
+      setActiveOrgId((prev) => {
+        const exists = prev && list.some((o) => o.id === prev);
+        const next = exists ? prev : list[0]?.id ?? null;
+        try {
+          if (next) localStorage.setItem(LS_KEY, next);
+          else localStorage.removeItem(LS_KEY);
+        } catch {}
+        return next;
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // sincroniza localStorage quando trocar manualmente via setActiveOrgId
+  function setActiveOrgIdPersist(id: string | null) {
+    try {
+      if (id) localStorage.setItem(LS_KEY, id);
+      else localStorage.removeItem(LS_KEY);
+    } catch {}
+    setActiveOrgId(id);
+  }
+
+  useEffect(() => {
+    fetchOrgs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { orgs, activeOrgId, setActiveOrgId, loading, err };
+  const value = useMemo(
+    () => ({
+      orgs,
+      activeOrgId,
+      setActiveOrgId: setActiveOrgIdPersist,
+      loading,
+      refresh: fetchOrgs,
+    }),
+    [orgs, activeOrgId, loading]
+  );
+
+  return value;
 }
 
-// Back-compat: alguns componentes esperam só activeOrgId
+/** Alias p/ telas antigas que importavam `useActiveOrg` */
 export function useActiveOrg() {
-  const { activeOrgId, setActiveOrgId } = useMyOrgs();
-  return { activeOrgId, setActiveOrgId };
+  const { activeOrgId } = useMyOrgs();
+  return activeOrgId;
 }

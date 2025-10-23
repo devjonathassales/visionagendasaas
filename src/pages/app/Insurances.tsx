@@ -1,5 +1,5 @@
 // src/pages/app/Insurances.tsx
-import { useActiveOrg } from "@/hooks/useMyOrgs";
+import { useMyOrgs } from "@/hooks/useMyOrgs";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Plus, X, Trash2, Pencil } from "lucide-react";
@@ -35,7 +35,7 @@ function Modal({ open, onClose, title, children }: any) {
 }
 
 export default function InsurancesPage() {
-  const { activeOrgId } = useActiveOrg();
+  const { activeOrgId } = useMyOrgs();
   const [rows, setRows] = useState<Insurance[]>([]);
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Insurance | null>(null);

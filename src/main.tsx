@@ -1,4 +1,3 @@
-// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
@@ -6,7 +5,7 @@ import {
   RouterProvider,
   Navigate,
 } from "react-router-dom";
-import "@/index.css";
+import "./index.css";
 
 import { AuthProvider } from "@/contexts/authContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -21,7 +20,7 @@ import { RequireAuth, RequireAdmin } from "@/routes/guards";
 
 // Páginas públicas
 import LoginPage from "@/pages/auth/Login";
-import ResetPasswordPage from "@/pages/auth/ResetPassword"; // 👈 nova
+import ResetPasswordPage from "@/pages/auth/ResetPassword";
 import AcceptInvitePage from "@/pages/public/AcceptInvite";
 
 // Painel Admin
@@ -33,6 +32,7 @@ import ClinicsPage from "@/pages/app/Clinics";
 import DoctorsPage from "@/pages/app/Doctors";
 import InsurancesPage from "@/pages/app/Insurances";
 import AgendaPage from "@/pages/app/Agenda";
+import PatientsPage from "@/pages/app/Patients";
 
 const router = createBrowserRouter([
   // Público
@@ -42,15 +42,15 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/login" replace /> },
       { path: "login", element: <LoginPage /> },
-      { path: "reset-password", element: <ResetPasswordPage /> }, // 👈 público (via link do e-mail)
+      { path: "reset-password", element: <ResetPasswordPage /> },
       { path: "accept-invite/:token", element: <AcceptInvitePage /> },
     ],
   },
 
-  // App do Cliente (qualquer usuário autenticado)
+  // App do Cliente (usuário autenticado)
   {
     path: "/app",
-    element: <RequireAuth />, // exige sessão; se não tiver, vai para /login
+    element: <RequireAuth />,
     children: [
       {
         path: "",
@@ -59,6 +59,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/app/agenda" replace /> },
           { path: "agenda", element: <AgendaPage /> },
           { path: "clinics", element: <ClinicsPage /> },
+          { path: "patients", element: <PatientsPage /> },
           { path: "doctors", element: <DoctorsPage /> },
           { path: "insurances", element: <InsurancesPage /> },
         ],
@@ -66,7 +67,7 @@ const router = createBrowserRouter([
     ],
   },
 
-  // Painel Admin (apenas admins; não-admin é redirecionado pelo guard para /app)
+  // Painel Admin
   {
     path: "/admin",
     element: <RequireAdmin />,
@@ -83,7 +84,7 @@ const router = createBrowserRouter([
     ],
   },
 
-  // 404 -> manda para o app
+  // 404 -> app
   { path: "*", element: <Navigate to="/app" replace /> },
 ]);
 
