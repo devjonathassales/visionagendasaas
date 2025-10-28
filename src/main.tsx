@@ -7,6 +7,7 @@ import {
 } from "react-router-dom";
 import "./index.css";
 
+// Providers
 import { AuthProvider } from "@/contexts/authContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -26,6 +27,7 @@ import AcceptInvitePage from "@/pages/public/AcceptInvite";
 // Painel Admin
 import AdminClientsPage from "@/pages/admin/Clients";
 import AdminPlansPage from "@/pages/admin/Plans";
+import SystemUsersPage from "@/pages/app/SystemUsers"
 
 // App do Cliente
 import ClinicsPage from "@/pages/app/Clinics";
@@ -79,6 +81,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/admin/clients" replace /> },
           { path: "clients", element: <AdminClientsPage /> },
           { path: "plans", element: <AdminPlansPage /> },
+          { path: "users", element: <SystemUsersPage /> }, // ✅ nova rota
         ],
       },
     ],
