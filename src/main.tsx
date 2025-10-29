@@ -1,4 +1,3 @@
-// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
@@ -31,7 +30,8 @@ import AcceptInvitePage from "@/pages/public/AcceptInvite";
 // Painel Admin
 import AdminClientsPage from "@/pages/admin/Clients";
 import AdminPlansPage from "@/pages/admin/Plans";
-import BillingPage from "@/pages/admin/Billing"; // se não tiver, remova esta linha e a rota
+// Se existir a página de financeiro, descomente a linha abaixo e a rota correspondente
+// import BillingPage from "@/pages/admin/Billing";
 
 // App do Cliente
 import ClinicsPage from "@/pages/app/Clinics";
@@ -46,12 +46,15 @@ const router = createBrowserRouter([
     path: "/",
     element: <PublicShell />,
     children: [
+      // Decisão automática: se admin -> /admin, senão -> /app
       { index: true, element: <RedirectAfterLogin /> },
       { path: "login", element: <LoginPage /> },
       { path: "reset-password", element: <ResetPasswordPage /> },
       { path: "accept-invite/:token", element: <AcceptInvitePage /> },
     ],
   },
+
+  // App do Cliente (usuário autenticado)
   {
     path: "/app",
     element: <RequireAuth />,
@@ -70,6 +73,8 @@ const router = createBrowserRouter([
       },
     ],
   },
+
+  // Painel Admin
   {
     path: "/admin",
     element: <RequireAdmin />,
@@ -81,11 +86,14 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/admin/clients" replace /> },
           { path: "clients", element: <AdminClientsPage /> },
           { path: "plans", element: <AdminPlansPage /> },
+          // Se existir a página, descomente:
           // { path: "billing", element: <BillingPage /> },
         ],
       },
     ],
   },
+
+  // 404 -> app
   { path: "*", element: <Navigate to="/app" replace /> },
 ]);
 

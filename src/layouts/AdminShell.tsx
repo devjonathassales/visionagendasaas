@@ -42,7 +42,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="text-sm uppercase text-mutedForeground mb-2">Admin</div>
       <Item to="/admin/clients">Clientes</Item>
       <Item to="/admin/plans">Planos</Item>
-      {/* ✅ novo */}
+      {/* Se tiver página de financeiro, mantenha; senão, remova a linha abaixo */}
       <Item to="/admin/billing">Financeiro</Item>
     </aside>
   );
@@ -65,7 +65,7 @@ export default function AdminShell() {
         <header className="header sticky top-0 z-40 border-b border-border/60 bg-[var(--bg)]/80 backdrop-blur">
           <div className="container mx-auto flex h-14 items-center justify-between">
             <div className="flex items-center gap-2">
-              {/* Hamburguer - mobile (cores do tema) */}
+              {/* Hamburguer - mobile */}
               <button
                 className="md:hidden inline-flex items-center rounded-md bg-card text-foreground border border-border p-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border"
                 aria-label="Abrir menu"
@@ -74,7 +74,8 @@ export default function AdminShell() {
                 <Menu className="h-5 w-5" />
               </button>
 
-              <Link to="/" className="font-semibold tracking-tight">
+              {/* Logo SEMPRE para /admin */}
+              <Link to="/admin" className="font-semibold tracking-tight">
                 VISIONAGENDA • Admin
               </Link>
 
@@ -106,7 +107,7 @@ export default function AdminShell() {
                 >
                   Planos
                 </NavLink>
-                {/* ✅ novo */}
+                {/* Se tiver página de financeiro, mantenha; senão, remova */}
                 <NavLink
                   to="/admin/billing"
                   className={({ isActive }) =>
@@ -161,19 +162,18 @@ export default function AdminShell() {
         }`}
         aria-hidden={!open}
       >
-        {/* Overlay mais escuro */}
+        {/* Overlay */}
         <div
           className={`absolute inset-0 bg-black/50 transition-opacity ${
             open ? "opacity-100" : "opacity-0"
           }`}
           onClick={() => setOpen(false)}
         />
-        {/* PAINEL: fundo sólido do tema */}
+        {/* Painel */}
         <aside
-          className={`absolute left-0 top-0 h-full w-72 border-r border-border bg-card text-foreground
-                      shadow-xl transition-transform ${
-                        open ? "translate-x-0" : "-translate-x-full"
-                      }`}
+          className={`absolute left-0 top-0 h-full w-72 border-r border-border bg-card text-foreground shadow-xl transition-transform ${
+            open ? "translate-x-0" : "-translate-x-full"
+          }`}
           role="dialog"
           aria-modal="true"
         >
@@ -197,12 +197,11 @@ export default function AdminShell() {
                 to="/admin/clients"
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
-                  `block rounded-md px-3 py-2 text-sm border border-border
-                   ${
-                     isActive
-                       ? "bg-muted text-foreground"
-                       : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
-                   }`
+                  `block rounded-md px-3 py-2 text-sm border border-border ${
+                    isActive
+                      ? "bg-muted text-foreground"
+                      : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
+                  }`
                 }
               >
                 Clientes
@@ -211,27 +210,25 @@ export default function AdminShell() {
                 to="/admin/plans"
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
-                  `block rounded-md px-3 py-2 text-sm border border-border
-                   ${
-                     isActive
-                       ? "bg-muted text-foreground"
-                       : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
-                   }`
+                  `block rounded-md px-3 py-2 text-sm border border-border ${
+                    isActive
+                      ? "bg-muted text-foreground"
+                      : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
+                  }`
                 }
               >
                 Planos
               </NavLink>
-              {/* ✅ novo */}
+              {/* Financeiro (se existir) */}
               <NavLink
                 to="/admin/billing"
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
-                  `block rounded-md px-3 py-2 text-sm border border-border
-                   ${
-                     isActive
-                       ? "bg-muted text-foreground"
-                       : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
-                   }`
+                  `block rounded-md px-3 py-2 text-sm border border-border ${
+                    isActive
+                      ? "bg-muted text-foreground"
+                      : "bg-card text-mutedForeground hover:text-foreground hover:bg-muted"
+                  }`
                 }
               >
                 Financeiro

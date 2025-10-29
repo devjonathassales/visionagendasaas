@@ -9,19 +9,21 @@ export default function RedirectAfterLogin() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u.user?.email) return setPath("/login");
+      const email = u.user?.email ?? null;
+      if (!email) {
+        setPath("/login");
+        return;
+      }
 
-      // usa a mesma fonte de verdade
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("system_users_me")
         .select("is_admin")
         .maybeSingle();
 
-      if (error) return setPath("/app");
       setPath(data?.is_admin ? "/admin" : "/app");
     })();
   }, []);
 
-  if (!path) return null;
+  if (!path) return null; // loading
   return <Navigate to={path} replace />;
 }

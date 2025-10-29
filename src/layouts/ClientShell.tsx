@@ -11,7 +11,7 @@ import {
   Building2,
   Stethoscope,
   ShieldPlus,
-  Users, // 👈 novo ícone para Pacientes
+  Users,
 } from "lucide-react";
 import { useMyOrgs } from "@/hooks/useMyOrgs";
 
@@ -68,6 +68,7 @@ export default function ClientShell() {
               <Menu className="h-5 w-5" />
             </button>
 
+            {/* Logo SEMPRE para /app */}
             <Link to="/app" className="font-semibold tracking-tight">
               VISIONAGENDA • App
             </Link>
@@ -82,7 +83,6 @@ export default function ClientShell() {
                 <Building2 className="h-4 w-4 mr-1" />
                 Minhas clínicas
               </NavLink>
-              {/* 👇 novo: Pacientes */}
               <NavLink to="/app/patients" className={linkCls}>
                 <Users className="h-4 w-4 mr-1" />
                 Pacientes
@@ -229,7 +229,6 @@ export default function ClientShell() {
               >
                 <Building2 className="h-4 w-4 mr-1" /> Minhas clínicas
               </NavLink>
-              {/* 👇 novo: Pacientes (mobile) */}
               <NavLink
                 to="/app/patients"
                 onClick={() => setOpen(false)}
