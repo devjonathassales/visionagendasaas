@@ -1,3 +1,4 @@
+// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
@@ -19,6 +20,9 @@ import ClientShell from "@/layouts/ClientShell";
 // Guards
 import { RequireAuth, RequireAdmin } from "@/routes/guards";
 
+// Redirecionamento condicional pós-login
+import RedirectAfterLogin from "@/pages/auth/RedirectAfterLogin";
+
 // Páginas públicas
 import LoginPage from "@/pages/auth/Login";
 import ResetPasswordPage from "@/pages/auth/ResetPassword";
@@ -27,7 +31,7 @@ import AcceptInvitePage from "@/pages/public/AcceptInvite";
 // Painel Admin
 import AdminClientsPage from "@/pages/admin/Clients";
 import AdminPlansPage from "@/pages/admin/Plans";
-import SystemUsersPage from "@/pages/app/SystemUsers"
+import BillingPage from "@/pages/admin/Billing"; // se não tiver, remova esta linha e a rota
 
 // App do Cliente
 import ClinicsPage from "@/pages/app/Clinics";
@@ -42,14 +46,12 @@ const router = createBrowserRouter([
     path: "/",
     element: <PublicShell />,
     children: [
-      { index: true, element: <Navigate to="/login" replace /> },
+      { index: true, element: <RedirectAfterLogin /> },
       { path: "login", element: <LoginPage /> },
       { path: "reset-password", element: <ResetPasswordPage /> },
       { path: "accept-invite/:token", element: <AcceptInvitePage /> },
     ],
   },
-
-  // App do Cliente (usuário autenticado)
   {
     path: "/app",
     element: <RequireAuth />,
@@ -68,8 +70,6 @@ const router = createBrowserRouter([
       },
     ],
   },
-
-  // Painel Admin
   {
     path: "/admin",
     element: <RequireAdmin />,
@@ -81,13 +81,11 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/admin/clients" replace /> },
           { path: "clients", element: <AdminClientsPage /> },
           { path: "plans", element: <AdminPlansPage /> },
-          { path: "users", element: <SystemUsersPage /> }, // ✅ nova rota
+          // { path: "billing", element: <BillingPage /> },
         ],
       },
     ],
   },
-
-  // 404 -> app
   { path: "*", element: <Navigate to="/app" replace /> },
 ]);
 
