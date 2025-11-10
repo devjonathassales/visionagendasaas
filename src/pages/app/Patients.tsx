@@ -1,8 +1,7 @@
-// src/pages/app/Patients.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useMyOrgs } from "@/hooks/useMyOrgs";
-import { X, Pencil, Eye, Trash2 } from "lucide-react";
+import { X, Pencil, Eye, Trash2, Search } from "lucide-react";
 
 type Patient = {
   id: string;
@@ -50,6 +49,10 @@ export default function PatientsPage() {
   const [cpf, setCpf] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // BUSCA (novidade)
+  const [q, setQ] = useState("");
+  const showSearch = q.trim().length >= 3;
 
   // modal/edição
   const [openModal, setOpenModal] = useState(false);
@@ -166,9 +169,48 @@ export default function PatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrgId]);
 
+  // Lista filtrada com base na busca (3+ caracteres)
+  const filtered = useMemo(() => {
+    if (!showSearch) return list;
+    const term = q.trim().toLowerCase();
+    return list.filter((p) => {
+      const n = p.name?.toLowerCase() || "";
+      const c = p.cpf?.toLowerCase() || "";
+      const ph = p.phone?.toLowerCase() || "";
+      return n.includes(term) || c.includes(term) || ph.includes(term);
+    });
+  }, [list, q, showSearch]);
+
   return (
     <div className="space-y-6">
       <h1>Pacientes</h1>
+
+      {/* BUSCA (nova) */}
+      <div className="card p-3">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 opacity-70" />
+          <input
+            className="input w-full"
+            placeholder="Buscar por nome, CPF ou telefone (mín. 3 caracteres)…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {q && (
+            <button
+              className="rounded-md border px-2 py-1 text-sm"
+              onClick={() => setQ("")}
+              title="Limpar"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+        {q.trim().length > 0 && q.trim().length < 3 && (
+          <div className="mt-2 text-xs text-mutedForeground">
+            Digite pelo menos 3 caracteres para pesquisar.
+          </div>
+        )}
+      </div>
 
       {/* Form adicionar */}
       <form onSubmit={add} className="card p-4 grid gap-3 md:grid-cols-3">
@@ -209,11 +251,11 @@ export default function PatientsPage() {
       {/* Lista */}
       <div className="card p-4">
         <div className="text-sm text-mutedForeground mb-2">
-          {count} paciente(s)
+          {filtered.length} de {count} paciente(s)
         </div>
 
         <div className="grid gap-2">
-          {list.map((p) => (
+          {filtered.map((p) => (
             <div
               key={p.id}
               className="border rounded-md px-3 py-2 text-sm flex justify-between items-center"
@@ -253,9 +295,9 @@ export default function PatientsPage() {
             </div>
           ))}
 
-          {count === 0 && (
+          {filtered.length === 0 && (
             <div className="text-sm text-mutedForeground">
-              Nenhum paciente cadastrado.
+              Nenhum paciente encontrado.
             </div>
           )}
         </div>

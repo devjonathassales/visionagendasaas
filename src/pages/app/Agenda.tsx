@@ -10,6 +10,7 @@ import {
   Trash2,
   CalendarDays,
   Plus,
+  Search,
 } from "lucide-react";
 
 type Appt = {
@@ -95,6 +96,10 @@ export default function AgendaPage() {
   const [insurances, setInsurances] = useState<Insurance[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+
+  // BUSCA (novidade)
+  const [q, setQ] = useState("");
+  const showSearch = q.trim().length >= 3;
 
   // "view" | "edit" | "create"
   const [mode, setMode] = useState<"view" | "edit" | "create">("view");
@@ -281,6 +286,20 @@ export default function AgendaPage() {
     }
     return m;
   }, [appts]);
+
+  // BUSCA (filtra appts do mês atual)
+  const searchResults = useMemo(() => {
+    if (!showSearch) return [];
+    const term = q.trim().toLowerCase();
+    return appts.filter((a) => {
+      const patient = a.patient_name?.toLowerCase() || "";
+      const doc = doctorById[a.doctor_id]?.name?.toLowerCase() || "";
+      const clin = clinicName[a.clinic_id]?.toLowerCase() || "";
+      return (
+        patient.includes(term) || doc.includes(term) || clin.includes(term)
+      );
+    });
+  }, [q, showSearch, appts, doctorById, clinicName]);
 
   function prevMonth() {
     const d = new Date(month);
@@ -472,16 +491,18 @@ export default function AgendaPage() {
 
   return (
     <div className="space-y-4">
-      {/* barra do mês */}
+      {/* barra do mês + ações */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex items-center gap-2">
           <button className="rounded-md border p-2" onClick={prevMonth}>
             <ChevronLeft className="h-4 w-4" />
           </button>
         </div>
+
         <div className="font-semibold text-center">
           {month.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
         </div>
+
         <div className="inline-flex items-center gap-2 justify-end">
           {/* Botão feriados */}
           <button
@@ -501,6 +522,81 @@ export default function AgendaPage() {
             Novo agendamento
           </button>
         </div>
+      </div>
+
+      {/* BUSCA (aparece sempre; resultados com 3+ chars) */}
+      <div className="card p-3">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 opacity-70" />
+          <input
+            className="input w-full"
+            placeholder="Buscar por paciente, médico ou clínica (mín. 3 caracteres)…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {q && (
+            <button
+              className="rounded-md border px-2 py-1 text-sm"
+              onClick={() => setQ("")}
+              title="Limpar"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+
+        {showSearch && (
+          <div className="mt-3">
+            <div className="text-xs text-mutedForeground mb-2">
+              {searchResults.length} resultado(s) para “{q.trim()}”
+            </div>
+            {searchResults.length === 0 && (
+              <div className="text-sm text-mutedForeground">
+                Nenhum agendamento encontrado neste mês.
+              </div>
+            )}
+            {searchResults.length > 0 && (
+              <div className="grid gap-2">
+                {searchResults
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      new Date(a.when_at).getTime() -
+                      new Date(b.when_at).getTime()
+                  )
+                  .map((a) => {
+                    const doc = doctorById[a.doctor_id];
+                    const clin = clinicName[a.clinic_id] || "Clínica";
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => openView(a)}
+                        className="w-full text-left border rounded-md px-3 py-2"
+                        title="Abrir agendamento"
+                      >
+                        <div className="text-sm font-medium">
+                          {a.patient_name}
+                        </div>
+                        <div className="text-xs text-mutedForeground">
+                          {new Date(a.when_at).toLocaleString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {" • "}
+                          {doc?.name || "Médico"}
+                          {" • "}
+                          {clin}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* header dias (desktop) */}
